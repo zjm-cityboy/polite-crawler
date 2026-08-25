@@ -1,6 +1,7 @@
 # 种子 URL 清单：每行一个，# 开头为注释
-# 爬取前确认目标域名已加入 settings.py 的 ALLOWED_HOSTS 白名单
-# 中国天气网新闻文章（台风季报道，气象 RAG 知识库语料）
-http://news.weather.com.cn/2026/08/4771424.shtml
-http://p.weather.com.cn/2026/08/4772461.shtml
-http://news.weather.com.cn/2026/08/4771357.shtml
+# 【真爬虫模式】种子给"入口页"（频道首页/列表页）即可：
+#   spider 会自动发现页面里符合文章模式的链接（/年/月/编号.shtml），
+#   逐篇采集入库；也可以直接贴文章链接（跳过发现、直接采正文）
+# 换新站点时记得把域名加进 settings.py 的 ALLOWED_HOSTS 白名单
+# 和 spider 的 allowed_domains（双保险）
+http://news.weather.com.cn/index.shtml   # 中国天气网新闻频道（入口页）

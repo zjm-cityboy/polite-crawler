@@ -101,8 +101,18 @@ class TestParse:
 
         from news_crawler.spiders.article_spider import ArticleSpider
         spider = ArticleSpider()
-        spider.settings = Settings({'MIN_ARTICLE_CHARS': 50})
+        spider.settings = Settings({
+            'MIN_ARTICLE_CHARS': 50,
+            'FOLLOW_LINKS': True,   # 链接发现开启（真爬虫模式）
+        })
         return spider
+
+    @staticmethod
+    def _fake_response(url, text):
+        """用 Scrapy 真实 HtmlResponse：自带 css 选择器（链接发现依赖它）"""
+        from scrapy.http import HtmlResponse
+        return HtmlResponse(url=url, body=text.encode('utf-8'),
+                            encoding='utf-8')
 
     def test_extract_article_and_fp(self):
         """有正文页面 → 产出条目；两个 URL 同正文 → 内容指纹相同"""
@@ -129,21 +139,43 @@ class TestParse:
         assert items2[0]['content_fp'] == item['content_fp']
 
     def test_drop_nav_page(self):
-        """无有效正文的导航页 → 不产出条目"""
+        """无有效正文的导航页 → 不产出条目（也没有可跟随的链接）"""
         html = '<html><body><ul><li>首页</li><li>新闻</li></ul></body></html>'
         spider = self._make_spider()
         assert list(spider.parse(self._fake_response(
             'https://www.weather.com.cn/', html))) == []
 
-    @staticmethod
-    def _fake_response(url, text):
-        """最小 Response 替身：spider.parse 只用 .url 和 .text"""
-        class FakeResponse:
-            pass
-        resp = FakeResponse()
-        resp.url = url
-        resp.text = text
-        return resp
+    def test_link_discovery(self):
+        """列表页链接发现：只跟文章模式的链接，页内重复与栏目不跟"""
+        from scrapy import Request
+        # 列表页：2 个文章链接（一个绝对、一个相对）、1 个重复、
+        # 1 个栏目链接、1 个外站文章 —— 预期产出 3 个文章 Request
+        # （外站那个 parse 层会放行：符合文章模式；真实运行时由
+        #   OffsiteMiddleware/合规中间件在请求层拦下 —— 职责分离）
+        html = """
+        <html><body>
+        <a href="http://news.weather.com.cn/2026/08/4771293.shtml">文章A</a>
+        <a href="/2026/08/4771531.shtml">文章B(相对链接)</a>
+        <a href="/2026/08/4771293.shtml">文章A又出现一次</a>
+        <a href="/news/">新闻栏目(非文章模式)</a>
+        <a href="http://evil.com/2026/08/666.shtml">外站诱饵</a>
+        </body></html>
+        """
+        spider = self._make_spider()
+        results = list(spider.parse(self._fake_response(
+            'http://news.weather.com.cn/index.shtml', html)))
+
+        # 全部产出是 Request（列表页无正文）
+        assert all(isinstance(r, Request) for r in results)
+        urls = [r.url for r in results]
+        # 3 个：文章A + 文章B + 外站诱饵（重复的 A 与栏目页被过滤）
+        assert len(urls) == 3, f'应产出 3 个请求，实际 {urls}'
+        # 相对链接被补成绝对地址
+        assert 'http://news.weather.com.cn/2026/08/4771531.shtml' in urls
+        # 页内重复（文章A 第二次出现）没有多产出
+        assert urls.count('http://news.weather.com.cn/2026/08/4771293.shtml') == 1
+        # 栏目链接（不符合文章模式）没被跟随
+        assert 'http://news.weather.com.cn/news/' not in urls
 
 
 # ---------------- 内容去重管道（Redis 打桩） ----------------

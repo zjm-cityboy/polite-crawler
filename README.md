@@ -109,7 +109,7 @@ docker exec crawler-redis redis-cli SCARD dupefilter:content
 | 约束 | 实现 |
 |---|---|
 | 遵守 robots.txt | `ROBOTSTXT_OBEY = True`（框架级强制） |
-| 爬取边界可控 | 站点白名单（`ALLOWED_HOSTS`）+ 聚焦采集（不做链接发现，只爬种子清单） |
+| 爬取边界可控 | 真爬虫模式做**受控链接发现**，四重刹车：①站点白名单（中间件强制）②URL 模式正则（只跟文章形状链接）③深度限制（`DEPTH_LIMIT=2`）④数量熔断（采满 30 篇自动停 + 总请求数上限） |
 | 不给目标服务器造成压力 | AutoThrottle 自动限速 + 每域名并发 1 + 随机化下载间隔 |
 | 防 SSRF | 下载中间件解析目标 IP，拒绝私网/环回/保留地址 |
 | SQL 注入防护 | 全部参数绑定，无字符串拼接 SQL |
@@ -132,7 +132,7 @@ docker exec crawler-redis redis-cli SCARD dupefilter:content
 ├── news_crawler/               # Scrapy 工程
 │   ├── settings.py             #   全局配置（合规/限速/管道/服务地址）
 │   ├── items.py                #   ArticleItem 数据结构
-│   ├── spiders/article_spider.py   # 聚焦采集 + trafilatura 正文提取
+│   ├── spiders/article_spider.py   # 入口页链接发现（受控）+ trafilatura 正文提取
 │   ├── dupefilter.py           #   Redis 请求级去重（手写 scrapy-redis 核心）
 │   ├── middlewares.py          #   合规中间件（白名单/SSRF）+ UA 轮换
 │   ├── pipelines.py            #   RedisDedupe → PostgreSQL → Kafka 管道链
