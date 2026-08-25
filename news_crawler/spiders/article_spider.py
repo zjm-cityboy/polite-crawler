@@ -42,24 +42,33 @@ class ArticleSpider(scrapy.Spider):
     allowed_domains: ClassVar[list] = ['weather.com.cn']
 
     async def start(self):
-        """入口：读种子文件，逐个发出请求。
+        """入口：优先用调用方传入的 seed_url 参数，否则读种子文件。
 
         踩坑记录：Scrapy 2.13 起用 async start() 取代 start_requests()，
         2.18 已彻底移除旧方法 —— 只写 start_requests 会被静默忽略
         （一条请求都不发，爬虫"正常"空跑结束），必须用新 API。
-        """
-        seeds_file = self.settings['SEEDS_FILE']
-        try:
-            # 种子文件只有几行（微秒级读取），阻塞开销可忽略，
-            # 不为此引入线程池跳转（务实取舍）
-            with open(seeds_file, encoding='utf-8') as f:  # noqa: ASYNC230
-                seeds = [line.strip() for line in f
-                         if line.strip() and not line.strip().startswith('#')]
-        except FileNotFoundError:
-            self.logger.error(f'种子文件不存在: {seeds_file}')
-            return
 
-        self.logger.info(f'从 {seeds_file} 载入 {len(seeds)} 个种子 URL')
+        spider 参数是 Scrapy 的标准能力：scrapyd 触发时 -a seed_url=xxx
+        传值，spider 里 self.seed_url 取到（看板"提交爬取"按钮走这条路）；
+        命令行也能用：scrapy crawl article -a seed_url=http://...
+        """
+        # 未传参数时 self.seed_url 默认 None（Scrapy 基类自动注入）
+        if getattr(self, 'seed_url', None):
+            seeds = [self.seed_url.strip()]
+            self.logger.info(f'使用调用方传入的种子: {seeds[0]}')
+        else:
+            seeds_file = self.settings['SEEDS_FILE']
+            try:
+                # 种子文件只有几行（微秒级读取），阻塞开销可忽略，
+                # 不为此引入线程池跳转（务实取舍）
+                with open(seeds_file, encoding='utf-8') as f:  # noqa: ASYNC230
+                    seeds = [line.strip() for line in f
+                             if line.strip() and not line.strip().startswith('#')]
+            except FileNotFoundError:
+                self.logger.error(f'种子文件不存在: {seeds_file}')
+                return
+            self.logger.info(f'从 {seeds_file} 载入 {len(seeds)} 个种子 URL')
+
         for url in seeds:
             # callback 省略：默认回调就是 parse（列表页和文章页统一处理）
             yield scrapy.Request(url)

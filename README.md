@@ -85,13 +85,19 @@ curl "http://localhost:6800/listjobs.json?project=news_crawler"  # 查任务
 python kafka_consumer.py    # 订阅 articles 主题，打印收到的文章元数据
 ```
 
-### 5. 数据看板（浏览器打开）
+### 5. 采集控制台（浏览器打开）
 
 ```
 http://localhost:8080
 ```
 
-Vue3 + Element Plus + ECharts 看板：统计卡片（累计/今日/来源域名/峰值日采集）、每日采集量柱状图、来源域名分布环形图、文章分页列表（点击标题跳原文）。后端 FastAPI（`dashboard/main.py`）读 PG 提供 `/api/stats`、`/api/articles` 接口并托管前端静态页——**多阶段构建**：node 编译前端 → python 运行镜像（最终镜像不含 node_modules）。
+完整使用闭环，不用碰命令行：**粘贴入口链接 → 点"开始爬取" → 任务面板看进度（15 秒自动刷新）→ 下方看板出数据**。
+
+- 提交接口 `POST /api/crawl`：校验协议 + 域名白名单（看板不是任意指挥爬虫的口子）→ 调 Scrapyd API 以 `-a seed_url` 把需求传给爬虫
+- 任务接口 `GET /api/jobs`：转发 Scrapyd 任务列表
+- 数据接口：`/api/stats` 统计、`/api/articles` 分页
+- 前端 Vue3 + Element Plus + ECharts（CrawlForm/JobsPanel/StatsCards/TrendChart/SourceChart/ArticleTable 六组件 + useDashboard composable，15 秒轮询自动更新）
+- **多阶段构建**：node 编译前端 → python 运行镜像（最终镜像不含 node_modules）
 
 ### 6. 验证数据
 

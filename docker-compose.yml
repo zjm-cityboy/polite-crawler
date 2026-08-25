@@ -97,6 +97,11 @@ services:
       CRAWLER_DSN: postgresql://postgres:postgres@db:5432/crawler
       REDIS_URL: redis://redis:6379/0
       KAFKA_BOOTSTRAP: kafka:29092
+    volumes:
+      # eggs/日志持久化：容器重建不丢部署记录（实测踩坑：force-recreate
+      # 后 project not found，一切要重新 deploy）
+      - crawler_eggs:/app/eggs
+      - crawler_logs:/app/logs
     depends_on:                        # 三件基础设施健康后才启动爬虫
       db:
         condition: service_healthy
@@ -118,7 +123,7 @@ services:
       - scrapyd
 
   dashboard:
-    # 采集数据看板：FastAPI 读 PG + 托管 Vue 前端（多阶段构建：node 编译 + python 运行）
+    # 采集控制台：FastAPI（读 PG + 触发 Scrapyd）+ 托管 Vue 前端
     build:
       context: ./dashboard
       dockerfile: Dockerfile
@@ -127,10 +132,19 @@ services:
       - '8080:8000'
     environment:
       CRAWLER_DSN: postgresql://postgres:postgres@db:5432/crawler
+      SCRAPYD_URL: http://scrapyd:6800      # 容器网络内直连守护进程
+      # 白名单与爬虫侧同源（提交校验用），两处保持一致
+      ALLOWED_HOSTS: www.weather.com.cn,news.weather.com.cn,p.weather.com.cn
     depends_on:
       db:
         condition: service_healthy
+      scrapyd:
+        condition: service_started
 
 volumes:
   crawler_pgdata:
     name: crawler_pgdata              # 固定卷名（不加 compose 项目前缀，好找好管理）
+  crawler_eggs:
+    name: crawler_eggs                # scrapyd 部署包持久化
+  crawler_logs:
+    name: crawler_logs                # scrapyd 任务日志持久化

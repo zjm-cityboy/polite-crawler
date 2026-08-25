@@ -1,4 +1,4 @@
-// 数据获取 composable：统计汇总 + 文章分页，统一管理 loading 态
+// 数据获取 composable：统计 + 文章分页 + 爬取任务提交/轮询
 import { ref } from 'vue'
 
 export function useDashboard() {
@@ -8,6 +8,8 @@ export function useDashboard() {
   const page = ref(1)
   const size = ref(15)
   const loading = ref(false)
+  const jobs = ref({ pending: [], running: [], finished: [] })
+  let jobsTimer = null
 
   // 拉统计汇总（卡片 + 两张图共用一份数据）
   async function fetchStats() {
@@ -15,7 +17,7 @@ export function useDashboard() {
     stats.value = await res.json()
   }
 
-  // 拉文章列表（page/size 变化时调用；接口参数即查询串拼接）
+  // 拉文章列表（page/size 变化时调用）
   async function fetchArticles() {
     loading.value = true
     try {
@@ -30,11 +32,34 @@ export function useDashboard() {
     }
   }
 
+  // 拉任务列表 + 顺带刷新统计（任务跑完数据会变，一起刷省一次手动）
+  async function fetchJobs() {
+    const res = await fetch('/api/jobs')
+    jobs.value = await res.json()
+  }
+
+  // 任务/数据统一刷新：提交爬取后立即调，轮询到点也调
+  async function refreshAll() {
+    await Promise.all([fetchJobs(), fetchStats(), fetchArticles()])
+  }
+
+  // 任务轮询：15 秒一次（组件卸载时 clearInterval 防泄漏）
+  function startJobsPolling() {
+    jobsTimer = setInterval(refreshAll, 15000)
+  }
+  function stopJobsPolling() {
+    clearInterval(jobsTimer)
+  }
+
   // 表格翻页：更新页码后重新拉取
   function changePage(p) {
     page.value = p
     fetchArticles()
   }
 
-  return { stats, articles, total, page, size, loading, fetchStats, fetchArticles, changePage }
+  return {
+    stats, articles, total, page, size, loading, jobs,
+    fetchStats, fetchArticles, fetchJobs, refreshAll,
+    startJobsPolling, stopJobsPolling, changePage,
+  }
 }
