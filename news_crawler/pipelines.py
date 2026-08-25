@@ -23,6 +23,47 @@ from news_crawler.db import DDL_ARTICLES, pg_conn
 logger = logging.getLogger(__name__)
 
 
+class QualityFilterPipeline:
+    """质量过滤管道（管道链第一位）：拦截低信息量页面。
+
+    实测的两类垃圾（2026-08 气象站源数据诊断）：
+      404 错误页：正文是"非常抱歉，网页无法访问"提示语（154 字）
+      图片频道页：标题以"-图片频道"结尾，正文只是图注（约 420 字）
+    与"短资讯"的区分：真资讯（如 417 字的降雨预报）有信息量，
+    不能只按字数一刀切 —— 标题/URL 模式黑名单 + 字数下限组合判断。
+    """
+
+    # 标题黑名单：命中即丢（图集/视频/直播页的文字信息量低）
+    TITLE_BLACKLIST = ('图片频道', '视频', '直播', '专题')
+
+    def __init__(self, min_chars):
+        self.min_chars = min_chars
+        self.dropped = 0   # 本次运行拦截数（统计用）
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings['QUALITY_MIN_CHARS'])
+
+    def process_item(self, item):
+        title = item['title']
+        # 规则 1：标题黑名单（"-图片频道"等后缀）
+        if any(word in title for word in self.TITLE_BLACKLIST):
+            self.dropped += 1
+            raise DropItem(f'[低质·标题黑名单] {title}')
+        # 规则 2：URL 命中 error（404 页等站点错误模板）
+        if 'error' in item['url']:
+            self.dropped += 1
+            raise DropItem(f'[低质·错误页] {item["url"]}')
+        # 规则 3：字数下限（拦截错误提示语等超短文本）
+        if len(item['content_md']) < self.min_chars:
+            self.dropped += 1
+            raise DropItem(f'[低质·正文过短] {len(item["content_md"])}字 {title}')
+        return item
+
+    def close_spider(self):
+        logger.info('[统计] 质量过滤拦截低质页面 %d 条', self.dropped)
+
+
 class RedisDedupePipeline:
     """内容级去重：同一篇文章换了链接/被转载，只放行第一份。
 

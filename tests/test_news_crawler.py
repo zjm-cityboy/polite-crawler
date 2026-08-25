@@ -178,6 +178,53 @@ class TestParse:
         assert 'http://news.weather.com.cn/news/' not in urls
 
 
+# ---------------- 质量过滤管道（纯逻辑，无外部依赖） ----------------
+
+
+class TestQualityFilterPipeline:
+    @staticmethod
+    def make_pipeline(min_chars=300):
+        from news_crawler.pipelines import QualityFilterPipeline
+        return QualityFilterPipeline(min_chars)
+
+    @staticmethod
+    def _item(title='', url='http://news.weather.com.cn/2026/08/1.shtml',
+              body='字' * 400):
+        return {'title': title, 'url': url, 'content_md': body}
+
+    def test_drop_picture_channel(self):
+        """标题命中黑名单（-图片频道）→ 拦截"""
+        import pytest
+        from scrapy.exceptions import DropItem
+        pipe = self.make_pipeline()
+        with pytest.raises(DropItem):
+            pipe.process_item(self._item(title='火烧云惊艳登场-图片频道'))
+
+    def test_drop_error_page(self):
+        """URL 含 error（站点 404 模板）→ 拦截"""
+        import pytest
+        from scrapy.exceptions import DropItem
+        pipe = self.make_pipeline()
+        with pytest.raises(DropItem):
+            pipe.process_item(self._item(
+                url='https://www.weather.com.cn/other/weather_error_404.html'))
+
+    def test_drop_short_body(self):
+        """正文低于字数下限（404 提示语 154 字）→ 拦截"""
+        import pytest
+        from scrapy.exceptions import DropItem
+        pipe = self.make_pipeline(min_chars=300)
+        with pytest.raises(DropItem):
+            pipe.process_item(self._item(body='抱歉，网页无法访问' * 15))
+
+    def test_pass_normal_article(self):
+        """正常文章（417 字降雨资讯）→ 放行"""
+        pipe = self.make_pipeline()
+        item = self._item(title='北京未来三天多降雨 局地大到暴雨',
+                          body='雨' * 417)
+        assert pipe.process_item(item) is item
+
+
 # ---------------- 内容去重管道（Redis 打桩） ----------------
 
 class FakeRedis:

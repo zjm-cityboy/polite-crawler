@@ -60,10 +60,15 @@ DUPEFILTER_CLASS = 'news_crawler.dupefilter.RedisDupeFilter'
 # ---------------- 管道链：按数字从小到大依次执行 ----------------
 
 ITEM_PIPELINES = {
-    'news_crawler.pipelines.RedisDedupePipeline': 100,  # 1. 正文指纹去重
-    'news_crawler.pipelines.PostgresPipeline': 200,     # 2. 文章入库 PG
-    'news_crawler.pipelines.KafkaPipeline': 300,        # 3. 推 Kafka 给下游
+    'news_crawler.pipelines.QualityFilterPipeline': 50,  # 0. 质量过滤（拦垃圾）
+    'news_crawler.pipelines.RedisDedupePipeline': 100,   # 1. 正文指纹去重
+    'news_crawler.pipelines.PostgresPipeline': 200,      # 2. 文章入库 PG
+    'news_crawler.pipelines.KafkaPipeline': 300,         # 3. 推 Kafka 给下游
 }
+
+# 质量过滤参数：正文低于 300 字丢弃（实测 404 错误页 154 字、
+# 正常短资讯 417 字 —— 300 是分界线；图片频道另由标题黑名单拦截）
+QUALITY_MIN_CHARS = 300
 
 # ---------------- 中间件链（下载侧） ----------------
 

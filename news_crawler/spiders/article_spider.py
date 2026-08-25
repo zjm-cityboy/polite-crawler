@@ -117,6 +117,10 @@ class ArticleSpider(scrapy.Spider):
             # 模式过滤：只跟"文章形状"的链接（刹车 2）
             if not ARTICLE_URL_RE.search(url):
                 continue
+            # 错误页拦截：站点错误模板链接（weather_error_404.html 等）
+            # 从源头不跟 —— 实测踩坑：会爬回"网页无法访问"当正文
+            if 'error' in url:
+                continue
             # 页内去重 + 已产出过本页 URL 跳过
             if url in seen_in_page:
                 continue
