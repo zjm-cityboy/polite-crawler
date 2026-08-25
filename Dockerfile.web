@@ -1,0 +1,19 @@
+# ScrapydWeb 独立镜像：只装监控面板自身，不装 Scrapy
+#
+# 为什么单独一个 Dockerfile：scrapydweb 1.6.0 钉死了 w3lib==2.0.0 等一串
+# 老依赖，与 Scrapy 2.18 的依赖链正面冲突 —— 两者装进同一环境必然崩，
+# 官方部署惯例也是分开跑（面板通过 HTTP API 连 scrapyd，不需要爬虫代码）。
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 纯净环境安装：版本被钉死的老依赖（Flask 2.0/SQLAlchemy 1.3 等）互相兼容
+RUN pip install --no-cache-dir scrapydweb==1.6.0
+
+# 只需要面板配置文件（1.6.0 认 v11 命名；连接哪个 scrapyd 节点）
+COPY scrapydweb_settings_v11.py .
+
+EXPOSE 5000
+
+CMD ["scrapydweb"]

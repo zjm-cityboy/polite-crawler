@@ -1,0 +1,10 @@
+# 爬虫应用依赖（本地运行与 scrapyd 容器共用）
+# 注意：scrapydweb 不在这里 —— 它钉死的 w3lib==2.0.0 与 Scrapy 冲突，
+# 独立装在 Dockerfile.web 的隔离环境里
+scrapy>=2.18
+scrapyd>=1.6
+scrapyd-client>=2.0
+redis>=5.0
+kafka-python>=2.0
+psycopg2-binary>=2.9
+trafilatura>=2.0

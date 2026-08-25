@@ -1,0 +1,122 @@
+# 企业级爬虫全套基础设施：一条命令 `docker compose up -d` 全部拉起
+#
+#   db         PostgreSQL 18     —— 文章数据入库（宿主机 5433，避开本机已有 5432）
+#   redis      Redis 7           —— 请求/内容双重去重指纹（宿主机 6379）
+#   kafka      Kafka 3.7 (KRaft) —— 采集结果向下游分发（宿主机 9092）
+#   scrapyd    爬虫守护进程       —— 接收部署、跑爬虫任务（宿主机 6800）
+#   scrapydweb 监控面板          —— 浏览器管理爬虫（宿主机 5000）
+#
+# 容器之间用服务名互访（同一 compose 网络自动 DNS）：
+#   爬虫容器里连 db:5432 / redis:6379 / kafka:29092
+#   本机直跑时连 localhost:5433 / localhost:6379 / localhost:9092
+
+# 项目名：目录名是中文时 Compose 无法自动推导，必须显式声明
+# （卷名前缀、网络名都以它开头，固定小写字母+连字符）
+name: news-crawler
+
+services:
+
+  db:
+    image: postgres:18-alpine
+    container_name: crawler-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres      # 学习环境默认密码，生产必须改+外置
+      POSTGRES_DB: crawler             # 首次启动自动建库
+    ports:
+      - '5433:5432'
+    volumes:
+      # PG18 镜像新要求：挂父目录 /var/lib/postgresql（官方为支持 pg_upgrade
+      # 改了约定，再挂 .../data 会直接拒绝启动 —— 已实测踩坑）
+      - crawler_pgdata:/var/lib/postgresql
+    healthcheck:                       # 健康检查：上方依赖据此判断"就绪"
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d crawler']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: crawler-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']   # 期望返回 PONG
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    # KRaft 模式：Kafka 3.3+ 不再需要独立的 Zookeeper（少一个组件）
+    image: apache/kafka:3.7.0
+    container_name: crawler-kafka
+    ports:
+      - '9092:9092'
+    environment:
+      # ---- 单节点 KRaft 身份：既是 broker（存消息）也是 controller（管元数据）----
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      # ---- 三组监听器 ----
+      # CONTROLLER  内部管理通道
+      # PLAINTEXT   容器网络内互访（advertise 名字 = 服务名 kafka，端口 29092）
+      # PLAINTEXT_HOST  宿主机访问（advertise 名字 = localhost:9092）
+      KAFKA_LISTENERS: >-
+        PLAINTEXT://kafka:29092,
+        CONTROLLER://kafka:29093,
+        PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: >-
+        PLAINTEXT://kafka:29092,
+        PLAINTEXT_HOST://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        PLAINTEXT:PLAINTEXT,
+        CONTROLLER:PLAINTEXT,
+        PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # ---- 单节点必须的降副本配置（默认 3 副本是给集群的）----
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      # 用 kafka-topics 列主题当探活：命令能成功说明 broker 已就绪
+      test: ['CMD-SHELL', '/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list']
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  scrapyd:
+    build: .                          # 用项目 Dockerfile 构建爬虫应用镜像
+    container_name: crawler-scrapyd
+    command: scrapyd
+    ports:
+      - '6800:6800'
+    environment:
+      # 容器网络内寻址：服务名直连（settings.py 读这些环境变量）
+      CRAWLER_DSN: postgresql://postgres:postgres@db:5432/crawler
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:                        # 三件基础设施健康后才启动爬虫
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  scrapydweb:
+    # 独立镜像（Dockerfile.web）：scrapydweb 与 scrapy 依赖冲突，必须分开装
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: crawler-scrapydweb
+    command: scrapydweb
+    ports:
+      - '5000:5000'
+    depends_on:
+      - scrapyd
+
+volumes:
+  crawler_pgdata:
+    name: crawler_pgdata              # 固定卷名（不加 compose 项目前缀，好找好管理）

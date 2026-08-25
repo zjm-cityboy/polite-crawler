@@ -1,0 +1,6 @@
+# 种子 URL 清单：每行一个，# 开头为注释
+# 爬取前确认目标域名已加入 settings.py 的 ALLOWED_HOSTS 白名单
+# 中国天气网新闻文章（台风季报道，气象 RAG 知识库语料）
+http://news.weather.com.cn/2026/08/4771424.shtml
+http://p.weather.com.cn/2026/08/4772461.shtml
+http://news.weather.com.cn/2026/08/4771357.shtml
