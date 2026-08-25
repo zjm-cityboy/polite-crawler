@@ -192,6 +192,27 @@ def jobs():
     }
 
 
+@app.get('/api/article/{article_id}')
+def article_detail(article_id: int):
+    """单篇正文：前端"查看正文"弹窗按需加载（列表不传全文，省带宽）。"""
+    with get_conn() as conn, conn.cursor() as cur:
+        # 参数绑定；只查一篇主键行
+        cur.execute(
+            'SELECT id, title, url, published, content_md, '
+            'to_char(crawled_at, \'YYYY-MM-DD HH24:MI\') '
+            'FROM articles WHERE id = %s',
+            (article_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, f'文章不存在: {article_id}')
+    return {
+        'id': row[0], 'title': row[1] or '(无标题)', 'url': row[2],
+        'published': row[3] or '-', 'content_md': row[4],
+        'crawled_at': row[5],
+    }
+
+
 # 静态托管放最后注册（API 路由优先匹配）；html=True 让 / 回落到 index.html
 _static_dir = os.path.join(os.path.dirname(__file__), 'static')
 if os.path.isdir(_static_dir):
