@@ -173,6 +173,8 @@ docker exec crawler-redis redis-cli SCARD dupefilter:content
 7. kafka-python 不指定 `api_version` 时对 Kafka 3.7 协商失败（消费者静默收不到消息）
 8. Docker BuildKit 不支持中文构建路径（`DOCKER_BUILDKIT=0` 走经典构建器）
 9. `@contextmanager` 装饰器遗漏导致 `with` 生成器报 `AttributeError: __enter__`
+10. **镜像内源码遮蔽热部署 egg**：Dockerfile `COPY . .` 把构建时的旧爬虫代码带进镜像，Python import 优先命中容器文件系统的旧包 —— scrapyd-deploy 部署了新版却永远跑旧版（`.dockerignore` 排除 `news_crawler/` 根治：镜像只留运行环境，代码只从 egg 来）
+11. **scrapyd 多版本 egg 共存时默认版本选择不可靠**：调度可能不用最新版（`delversion.json` 删旧版根治）；另验证结论别建立在 URL 去重之上——指纹未清时"0 混入"可能是去重挡的假阳性，必须清指纹全量重爬才算数
 
 ## License
 

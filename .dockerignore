@@ -1,0 +1,14 @@
+# scrapyd 镜像不打包爬虫源码：爬虫代码只通过 scrapyd-deploy 的 egg 提供
+# 实测踩坑：镜像里若有同名 news_crawler/ 包，Python import 会优先命中
+# 容器文件系统的旧代码、遮蔽热部署的新 egg —— 部署了新版却永远跑旧版
+news_crawler/
+# 以下与运行无关，一并排除（减小上下文）
+tests/
+docs/
+data/
+dashboard/
+build/
+*.egg-info/
+.github/
+.git/
+.mimosa/
