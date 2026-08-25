@@ -117,6 +117,20 @@ services:
     depends_on:
       - scrapyd
 
+  dashboard:
+    # 采集数据看板：FastAPI 读 PG + 托管 Vue 前端（多阶段构建：node 编译 + python 运行）
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: crawler-dashboard
+    ports:
+      - '8080:8000'
+    environment:
+      CRAWLER_DSN: postgresql://postgres:postgres@db:5432/crawler
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   crawler_pgdata:
     name: crawler_pgdata              # 固定卷名（不加 compose 项目前缀，好找好管理）

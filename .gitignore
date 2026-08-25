@@ -10,6 +10,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# 看板前端构建产物与依赖（容器内构建，仓库不带）
+dashboard/frontend/node_modules/
+dashboard/frontend/dist/
+dashboard/static/
+
 # 本地环境与工具状态
 .env
 .venv/

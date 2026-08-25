@@ -1,6 +1,6 @@
 # News Crawler —— 企业级礼貌爬虫系统
 
-基于 **Scrapy** 的新闻/文章采集系统：**Redis 双重去重 → PostgreSQL 入库 → Kafka 下游分发 → Scrapyd/ScrapydWeb 部署监控**，五容器 Docker Compose 一键启动。定位为 RAG 系统的知识库语料采集端（默认采集中国天气网，与气象 RAG 项目同源）。
+基于 **Scrapy** 的新闻/文章采集系统：**Redis 双重去重 → PostgreSQL 入库 → Kafka 下游分发 → Scrapyd/ScrapydWeb 部署监控 + 数据看板**，六容器 Docker Compose 一键启动。定位为 RAG 系统的知识库语料采集端（默认采集中国天气网，与气象 RAG 项目同源）。
 
 > "礼貌爬虫"（polite crawler）= 遵守 robots.txt、限速让步、聚焦白名单站点、只采公开页面 —— 合规是本系统的第一设计约束，详见下文「合规设计」。
 
@@ -85,7 +85,15 @@ curl "http://localhost:6800/listjobs.json?project=news_crawler"  # 查任务
 python kafka_consumer.py    # 订阅 articles 主题，打印收到的文章元数据
 ```
 
-### 5. 验证数据
+### 5. 数据看板（浏览器打开）
+
+```
+http://localhost:8080
+```
+
+Vue3 + Element Plus + ECharts 看板：统计卡片（累计/今日/来源域名/峰值日采集）、每日采集量柱状图、来源域名分布环形图、文章分页列表（点击标题跳原文）。后端 FastAPI（`dashboard/main.py`）读 PG 提供 `/api/stats`、`/api/articles` 接口并托管前端静态页——**多阶段构建**：node 编译前端 → python 运行镜像（最终镜像不含 node_modules）。
+
+### 6. 验证数据
 
 ```bash
 docker exec crawler-db psql -U postgres -d crawler \
@@ -129,11 +137,15 @@ docker exec crawler-redis redis-cli SCARD dupefilter:content
 │   ├── middlewares.py          #   合规中间件（白名单/SSRF）+ UA 轮换
 │   ├── pipelines.py            #   RedisDedupe → PostgreSQL → Kafka 管道链
 │   └── db.py                   #   PG 连接池（双检锁 + 上下文管理器）
+├── dashboard/                  # 采集数据看板（FastAPI + Vue3，多阶段构建）
+│   ├── main.py                 #   统计/分页接口 + 静态托管
+│   ├── Dockerfile              #   node 编译 → python 运行两阶段
+│   └── frontend/               #   Vue3 + Element Plus + ECharts 前端
 ├── weibo_spider.py             # 微博评论采集（独立脚本：课程作业专项）
 ├── kafka_consumer.py           # Kafka 下游消费者示例
 ├── tests/                      # 离线单元测试（11 例）
 ├── docs/                       # 学习文档（Redis / Scrapyd / Kafka / 法律调研）
-├── docker-compose.yml          # 五服务编排
+├── docker-compose.yml          # 六服务编排
 ├── Dockerfile / Dockerfile.web # 应用镜像（scrapyd / scrapydweb 分离）
 └── scrapyd.conf / scrapydweb_settings_v11.py
 ```
