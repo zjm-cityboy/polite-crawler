@@ -35,6 +35,13 @@ class QualityFilterPipeline:
 
     # 标题黑名单：命中即丢（图集/视频/直播页的文字信息量低）
     TITLE_BLACKLIST = ('图片频道', '视频', '直播', '专题')
+    # 图集频道标题后缀（"-生活"是风光图集；"-资讯"是真资讯，不能误杀）
+    TITLE_SUFFIX_BLACKLIST = ('-生活', '-图片频道')
+
+    # 导航污染词：正文含任一说明 trafilatura 把侧栏/推荐位当正文捞了
+    # （实测样本：图集页正文混着"热门城市/选择省市/周边景点"等站点菜单）
+    NAV_MARKERS = ('热门城市', '热门景点', '选择省市', '选择洲际',
+                   '周边城市', '周边景点', '本地乡镇', '返回 全国')
 
     def __init__(self, min_chars):
         self.min_chars = min_chars
@@ -46,8 +53,10 @@ class QualityFilterPipeline:
 
     def process_item(self, item):
         title = item['title']
-        # 规则 1：标题黑名单（"-图片频道"等后缀）
-        if any(word in title for word in self.TITLE_BLACKLIST):
+        body = item['content_md']
+        # 规则 1：标题黑名单（"-图片频道"/"-生活"等频道后缀）
+        if (any(word in title for word in self.TITLE_BLACKLIST)
+                or title.endswith(self.TITLE_SUFFIX_BLACKLIST)):
             self.dropped += 1
             raise DropItem(f'[低质·标题黑名单] {title}')
         # 规则 2：URL 命中 error（404 页等站点错误模板）
@@ -55,9 +64,13 @@ class QualityFilterPipeline:
             self.dropped += 1
             raise DropItem(f'[低质·错误页] {item["url"]}')
         # 规则 3：字数下限（拦截错误提示语等超短文本）
-        if len(item['content_md']) < self.min_chars:
+        if len(body) < self.min_chars:
             self.dropped += 1
-            raise DropItem(f'[低质·正文过短] {len(item["content_md"])}字 {title}')
+            raise DropItem(f'[低质·正文过短] {len(body)}字 {title}')
+        # 规则 4：导航污染（正文混入站点菜单/侧栏文字 = 提取失败）
+        if any(m in body for m in self.NAV_MARKERS):
+            self.dropped += 1
+            raise DropItem(f'[低质·导航污染] {title}')
         return item
 
     def close_spider(self):

@@ -200,6 +200,28 @@ class TestQualityFilterPipeline:
         with pytest.raises(DropItem):
             pipe.process_item(self._item(title='火烧云惊艳登场-图片频道'))
 
+    def test_drop_life_gallery_suffix(self):
+        """风光图集后缀（-生活）→ 拦截（-资讯是真资讯不受影响）"""
+        import pytest
+        from scrapy.exceptions import DropItem
+        pipe = self.make_pipeline()
+        with pytest.raises(DropItem):
+            pipe.process_item(self._item(title='大美新疆—帕米尔高原好风光-生活'))
+        # "-资讯"后缀的真资讯必须放行（防止误杀的回归用例）
+        assert pipe.process_item(
+            self._item(title='韩国庆尚南道泥石流致一人死亡-资讯')) is not None
+
+    def test_drop_nav_pollution(self):
+        """正文混入站点导航词（热门城市/选择省市）→ 拦截"""
+        import pytest
+        from scrapy.exceptions import DropItem
+        pipe = self.make_pipeline()
+        body = ('刷新历史！一组数字回顾台风"白海豚"\n'
+                '热门城市\n选择省市\n周边景点\n本地乡镇\n'
+                '台风路径 空间天气 图片 专题 环境 旅游\n' + '正文内容' * 80)
+        with pytest.raises(DropItem):
+            pipe.process_item(self._item(title='台风专题页', body=body))
+
     def test_drop_error_page(self):
         """URL 含 error（站点 404 模板）→ 拦截"""
         import pytest
